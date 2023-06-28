@@ -2,6 +2,8 @@
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <string>
+#include <array>
+#include <vector>
 
 struct Textures {
     sf::Texture playerHead;
@@ -24,64 +26,55 @@ struct Cordinates {
 
 struct tileProperties {
     bool isWall;
+    bool hasEnemy;
     bool hasSnakeBodyPart;
-    int enemyWithIndex;
-    int foodWithIndex;
+    bool hasFood;
 };
 
 enum class Orientation { Up, Down, Left, Right };
+enum class MapObjectTypes { Food, Enemy, BodyPart};
 
 class Map {
 
 public:
-    Map(bool gameMap[10][10]) {
-        for (int i = 0; i < 10; i++) {
-            for (int j = 0; j < 10; j++) {
-                this->gameMap[i][j].isWall = gameMap[i][j];
-                this->gameMap[i][j].enemyWithIndex = -1;
-                this->gameMap[i][j].foodWithIndex = -1;
-                this->gameMap[i][j].hasSnakeBodyPart = false;
-            }
-        }
-    }
+    Map(bool gameMap[10][10]);
     void updateGameMap(tileProperties gameMap[10][10]);
     tileProperties getMapPropertiesAtPostion(Cordinates cords);
     void drawWorldMap(Sprites& gameSprites, sf::RenderWindow& window);
-
+    void addObject(Cordinates cords, MapObjectTypes object);
+    void removeObject(Cordinates cords, MapObjectTypes object);
 
 private:
     tileProperties gameMap[10][10];
 
 };
 
+class Bodypart {
+
+public:
+    Bodypart(Cordinates cords, Orientation orientation, int timeInMs, int frameNumber, int maxLifetimeInMs);
+    bool getCanBeDeleted();
+    void draw(sf::RenderWindow& window, Sprites& gameSprites);
+    void update(sf::Time& gameTime, Map& gameMap);
+
+private:
+    Cordinates cords;
+    Orientation orientation;
+    int msPassedWhenSpawned;
+    int frameNumber;
+    int maxLifetimeInMs;
+    int lifetimeInMs;
+    int msSinceLastFrameChange;
+};
+
 class Player {
 
 public:
-    Player() {
-        this->position = { 5,5 };
-        this->orientation = Orientation::Down;
-        this->frameNumber = 0;
-        this->msSinceLastMove = 0;
-        this->msSinceLastFrameChange = 0;
-        this->lastUpdate = 0;
-        this->alive = true;
-        this->firstKeyPressed = false;
-    }
-
+    Player();
+    bool isAlive();
+    void setOrientation(Orientation ort);
     void draw(Sprites& gameSprites, sf::RenderWindow& window);
-
-    void update(sf::Time& gameTime, Map& gameMap);
-
-    bool isAlive() {
-        return this->alive;
-    }
-
-    void setOrientation(Orientation ort) {
-        if (this->alive) {
-            this->orientation = ort;
-            this->firstKeyPressed = true;
-        }
-    }
+    void update(sf::Time& gameTime, Map& gameMap, std::vector<Bodypart>& bodyParts);
 
 private:
     Cordinates position;
@@ -90,35 +83,14 @@ private:
     int msSinceLastFrameChange;
     int frameNumber;
     int lastUpdate;
+    int applesEaten;
     bool alive;
     bool firstKeyPressed;
+
 };
 
 
-class Bodypart {
 
-public:
-    Bodypart(Cordinates cords, Orientation orientation, int timeInMs, int frameNumber) {
-        this->cords = cords;
-        this->orientation = orientation;
-        this->msPassedWhenSpawned = timeInMs;
-        this->canBeDeleted = false;
-        this->frameNumber = frameNumber;
-    }
-
-    void draw();
-
-    void update();
-
-    bool getCanBeDeleted();
-
-private:
-    Cordinates cords;
-    Orientation orientation;
-    int msPassedWhenSpawned;
-    int frameNumber;
-    bool canBeDeleted;
-};
 
 
 

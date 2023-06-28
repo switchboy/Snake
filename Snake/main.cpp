@@ -1,5 +1,5 @@
 #include "main.h"
-#include <array>
+
 
 
 void loadAndApplyTextures(Textures &gameTextures, Sprites &gameSprites) {
@@ -20,6 +20,17 @@ void loadAndApplyTextures(Textures &gameTextures, Sprites &gameSprites) {
     gameSprites.playerBody.setTexture(gameTextures.playerBody);
     gameSprites.wall.setTexture(gameTextures.wall);
     gameSprites.ground.setTexture(gameTextures.ground);
+}
+
+Map::Map(bool gameMap[10][10]) {
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            this->gameMap[i][j].isWall = gameMap[i][j];
+            this->gameMap[i][j].hasEnemy = false;
+            this->gameMap[i][j].hasFood = false;
+            this->gameMap[i][j].hasSnakeBodyPart = false;
+        }
+    }
 }
 
 
@@ -47,6 +58,58 @@ void Map::drawWorldMap(Sprites& gameSprites, sf::RenderWindow& window) {
                 window.draw(gameSprites.ground);
             }
         }
+    }
+}
+
+void Map::addObject(Cordinates cords, MapObjectTypes object) {
+    switch (object){
+        
+    case MapObjectTypes::Food:
+        this->gameMap[cords.x][cords.y].hasFood = true;
+        break;
+    case MapObjectTypes::Enemy:
+        this->gameMap[cords.x][cords.y].hasEnemy = true;
+        break;
+    case MapObjectTypes::BodyPart:
+        this->gameMap[cords.x][cords.y].hasSnakeBodyPart = true;
+        break;
+    }
+}
+void Map::removeObject(Cordinates cords, MapObjectTypes object) {
+    switch (object) {
+
+    case MapObjectTypes::Food:
+        this->gameMap[cords.x][cords.y].hasFood = false;
+        break;
+    case MapObjectTypes::Enemy:
+        this->gameMap[cords.x][cords.y].hasEnemy = false;
+        break;
+    case MapObjectTypes::BodyPart:
+        this->gameMap[cords.x][cords.y].hasSnakeBodyPart = false;
+        break;
+    }
+}
+
+Player::Player() {
+    this->position = { 5,5 };
+    this->orientation = Orientation::Down;
+    this->frameNumber = 0;
+    this->msSinceLastMove = 0;
+    this->msSinceLastFrameChange = 0;
+    this->lastUpdate = 0;
+    this->alive = true;
+    this->firstKeyPressed = false;
+    this->applesEaten = 0;
+}
+
+bool Player::isAlive() {
+    return this->alive;
+}
+
+void Player::setOrientation(Orientation ort) {
+    if (this->alive) {
+        this->orientation = ort;
+        this->firstKeyPressed = true;
     }
 }
 
@@ -104,7 +167,7 @@ void Player::draw(Sprites& gameSprites, sf::RenderWindow& window) {
     return;
 }
 
-void Player::update(sf::Time& gameTime, Map& gameMap) {
+void Player::update(sf::Time& gameTime, Map& gameMap, std::vector<Bodypart>& bodyParts) {
     if (!this->firstKeyPressed) {
         return;
     }
@@ -139,10 +202,17 @@ void Player::update(sf::Time& gameTime, Map& gameMap) {
             break;
         }
 
-        if (!gameMap.getMapPropertiesAtPostion(tempCords).isWall && !gameMap.getMapPropertiesAtPostion(tempCords).hasSnakeBodyPart  && gameMap.getMapPropertiesAtPostion(tempCords).enemyWithIndex == -1){
+        if (!gameMap.getMapPropertiesAtPostion(tempCords).isWall && !gameMap.getMapPropertiesAtPostion(tempCords).hasSnakeBodyPart  && !gameMap.getMapPropertiesAtPostion(tempCords).hasEnemy){
+            int tempFrameNumber = 0;
+            if (bodyParts.size() % 2 == 0) {
+                tempFrameNumber = 2;
+            }
+            bodyParts.push_back(Bodypart(this->position, this->orientation, this->lastUpdate, tempFrameNumber , 500*this->applesEaten));
+            gameMap.addObject(this->position, MapObjectTypes::BodyPart);
             this->position = tempCords;
-            if(gameMap.getMapPropertiesAtPostion(tempCords).foodWithIndex >= 0){
-                //TODO eatfood;
+            if(gameMap.getMapPropertiesAtPostion(tempCords).hasFood){
+                gameMap.removeObject(this->position, MapObjectTypes::Food);
+                this->applesEaten++;
             }
         }
         else {
@@ -152,10 +222,82 @@ void Player::update(sf::Time& gameTime, Map& gameMap) {
     }
 }
 
-void reloadGame(Player& player, sf::Clock& gameClock, Map& gameMap, bool defaultGameMap[10][10]) {
+Bodypart::Bodypart(Cordinates cords, Orientation orientation, int timeInMs, int frameNumber, int maxLifetimeInMs) {
+    this->cords = cords;
+    this->orientation = orientation;
+    this->msPassedWhenSpawned = timeInMs;
+    this->maxLifetimeInMs = timeInMs + maxLifetimeInMs;
+    this->frameNumber = frameNumber;
+    this->msSinceLastFrameChange = timeInMs;
+    this->lifetimeInMs = timeInMs;
+}
+
+bool Bodypart::getCanBeDeleted() {
+    if (this->maxLifetimeInMs < this->lifetimeInMs) {
+        return true;
+    }
+    return false;
+}
+
+void Bodypart::draw(sf::RenderWindow& window, Sprites& gameSprites) {
+    gameSprites.playerBody.setTextureRect(sf::IntRect(this->frameNumber * 64, 0, 64, 64));
+    gameSprites.playerBody.setOrigin(32.f, 32.f);
+    switch (this->orientation) {
+    case Orientation::Left:
+        gameSprites.playerBody.setRotation(180.f);
+        break;
+    case Orientation::Down:
+        gameSprites.playerBody.setRotation(90.f);
+        break;
+    case Orientation::Right:
+        gameSprites.playerBody.setRotation(0.f);
+        break;
+    case Orientation::Up:
+        gameSprites.playerBody.setRotation(270.f);
+        break;
+    }
+    gameSprites.playerBody.setPosition(sf::Vector2f(float(this->cords.x * 64 + 32), float(this->cords.y * 64 + 32)));
+    window.draw(gameSprites.playerBody);
+    return;
+}
+
+void Bodypart::update(sf::Time& gameTime, Map& gameMap){
+    this->lifetimeInMs = gameTime.asMilliseconds();
+    if (this->msSinceLastFrameChange < gameTime.asMilliseconds() - 250) {
+        this->msSinceLastFrameChange = gameTime.asMilliseconds();
+        this->frameNumber++;
+        if (this->frameNumber >= 4) {
+            this->frameNumber = 0;
+        }
+    }
+    if (this->maxLifetimeInMs < this->lifetimeInMs) {
+        gameMap.removeObject(this->cords, MapObjectTypes::BodyPart);
+    }
+}
+
+void drawBodyparts(std::vector<Bodypart>& bodyParts, sf::RenderWindow& window, Sprites& gameSprites) {
+    for (Bodypart& bodyPart : bodyParts)
+    {
+        bodyPart.draw(window, gameSprites);
+    }
+}
+
+void updateBodyparts(std::vector<Bodypart>& bodyParts, sf::Time& gameTime, Map& gameMap) {
+    for (std::vector<Bodypart>::iterator it = bodyParts.begin(); it != bodyParts.end();) {
+        it->update(gameTime, gameMap);
+        if (it->getCanBeDeleted()) {
+            it = bodyParts.erase(it);
+        }
+        else
+            ++it;
+    }
+}
+
+void reloadGame(Player& player, sf::Clock& gameClock, Map& gameMap, bool defaultGameMap[10][10], std::vector<Bodypart>& bodyParts) {
     new (&player) Player();
     new (&gameClock) sf::Clock;
     new (&gameMap) Map(defaultGameMap);
+    bodyParts.clear();
 }
 
 int main()
@@ -164,6 +306,7 @@ int main()
     Textures gameTextures;
     Sprites gameSprites;
     Player player;
+    std::vector<Bodypart> bodyParts;
     loadAndApplyTextures(gameTextures, gameSprites);
     sf::Clock gameClock;
     bool defaultGameMap[10][10] = {
@@ -201,7 +344,7 @@ int main()
                     player.setOrientation(Orientation::Right);
                 }
                 else if (!player.isAlive() && event.key.code == sf::Keyboard::Key::Enter) {
-                    reloadGame(player, gameClock, gameMap, defaultGameMap);
+                    reloadGame(player, gameClock, gameMap, defaultGameMap, bodyParts);
                     gameTime = gameClock.getElapsedTime();
                 }
             }
@@ -215,13 +358,17 @@ int main()
                 window.close();
         }
         if (windowHasFocus) {
-            player.update(gameTime, gameMap);
+            updateBodyparts(bodyParts, gameTime, gameMap);
+            player.update(gameTime, gameMap, bodyParts);
         }
         window.clear();
         gameMap.drawWorldMap(gameSprites, window);
+        drawBodyparts(bodyParts, window, gameSprites);
         player.draw(gameSprites, window);
         window.display();
     }
 
     return 0;
 }
+
+
